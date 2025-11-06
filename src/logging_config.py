@@ -7,9 +7,10 @@ preservando campos trace_id e span_id injetados pelo OpenTelemetry.
 
 import json
 import logging
-import os
 from datetime import datetime
 from typing import Any, Dict
+
+from src.config import settings
 
 
 class JSONFormatter(logging.Formatter):
@@ -36,7 +37,7 @@ class JSONFormatter(logging.Formatter):
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
-            "service": os.environ.get("OTEL_SERVICE_NAME", "poc-fastapi-service"),
+            "service": settings.service_name,
         }
         
         # Adicionar trace_id e span_id se disponíveis (injetados pelo OpenTelemetry)

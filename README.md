@@ -104,6 +104,45 @@ A stack é totalmente containerizada com Docker Compose e pronta para uso em des
 
 ---
 
+## ⚙️ Configuração
+
+### Variáveis de Ambiente
+
+O projeto utiliza um arquivo `.env` para configurar variáveis de ambiente de forma centralizada e segura.
+
+### 1. Criar arquivo .env
+
+Copie o arquivo de exemplo e ajuste os valores conforme necessário:
+
+```bash
+cp .env_example .env
+```
+
+### 2. Variáveis Disponíveis
+
+| Variável | Descrição | Valor Padrão | Valores Possíveis |
+|----------|-----------|--------------|-------------------|
+| `OTEL_SERVICE_NAME` | Nome do serviço para OpenTelemetry (aparece em traces, métricas e logs) | `poc-fastapi-service` | Qualquer string |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Endpoint do OpenTelemetry Collector | `http://otel-collector:4318` | URL HTTP/HTTPS ou `host:port` |
+| `LOG_LEVEL` | Nível de log da aplicação | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
+
+### 3. Como Funciona
+
+- O arquivo `.env` é carregado automaticamente pelo Pydantic Settings (`src/config.py`)
+- As variáveis podem ser sobrescritas por variáveis de ambiente do sistema
+- No Docker Compose, variáveis definidas em `environment` têm prioridade sobre o `.env`
+- O arquivo `.env` está no `.gitignore` e não será commitado
+
+### 4. Exemplo de .env
+
+```bash
+OTEL_SERVICE_NAME=minha-aplicacao
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+LOG_LEVEL=DEBUG
+```
+
+---
+
 ## 🚀 Instalação e Execução
 
 ### 1. Clone o repositório
@@ -113,7 +152,14 @@ git clone <seu-repositorio>
 cd poc-fastapi-otel
 ```
 
-### 2. Execute a stack completa
+### 2. Configure o arquivo .env
+
+```bash
+cp .env_example .env
+# Edite o .env conforme necessário (opcional, valores padrão já funcionam)
+```
+
+### 3. Execute a stack completa
 
 ```bash
 docker compose up --build
@@ -180,14 +226,16 @@ dependencies = [
 
 Copie os módulos de configuração de `src/`:
 
-1. **`logging_config.py`** - Configura logging estruturado em JSON
-2. **`otel.py`** - Configura OpenTelemetry (traces, métricas)
-3. **`middleware.py`** - Middleware para logging automático de requisições HTTP
+1. **`config.py`** - Configuração centralizada de variáveis de ambiente (Pydantic Settings)
+2. **`logging_config.py`** - Configura logging estruturado em JSON
+3. **`otel.py`** - Configura OpenTelemetry (traces, métricas)
+4. **`middleware.py`** - Middleware para logging automático de requisições HTTP
 
 No seu arquivo principal (`main.py`):
 
 ```python
 from fastapi import FastAPI
+from config import settings  # Configuração centralizada
 from otel import setup_telemetry
 from middleware import HTTPLoggingMiddleware
 
@@ -207,7 +255,7 @@ app.add_middleware(HTTPLoggingMiddleware)
 # Seus endpoints aqui
 @app.get("/")
 def root():
-    return {"status": "ok"}
+    return {"status": "ok", "service": settings.service_name}
 ```
 
 **Benefícios desta estrutura:**
@@ -222,7 +270,29 @@ Se preferir tudo no mesmo arquivo, configure o OpenTelemetry antes de criar os e
 
 ### Passo 3: Configurar Variáveis de Ambiente
 
-No seu `docker-compose.yml`, adicione as variáveis de ambiente:
+**Opção A: Usar arquivo .env (recomendado)**
+
+1. Copie o arquivo `src/config.py` para seu projeto
+2. Crie um arquivo `.env` na raiz do projeto:
+
+```bash
+OTEL_SERVICE_NAME=seu-servico-nome
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+LOG_LEVEL=INFO
+```
+
+3. No seu `docker-compose.yml`, adicione `env_file`:
+
+```yaml
+services:
+  sua-aplicacao:
+    env_file:
+      - .env
+    depends_on:
+      - otel-collector
+```
+
+**Opção B: Variáveis diretas no docker-compose.yml**
 
 ```yaml
 services:
@@ -230,9 +300,12 @@ services:
     environment:
       - OTEL_SERVICE_NAME=seu-servico-nome
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - LOG_LEVEL=INFO
     depends_on:
       - otel-collector
 ```
+
+**Nota:** O arquivo `src/config.py` centraliza todas as configurações usando Pydantic Settings, proporcionando type safety e validação automática.
 
 ### Passo 4: Copiar Arquivos de Configuração
 
@@ -315,9 +388,12 @@ poc-fastapi-otel/
 ├── src/
 │   ├── __init__.py
 │   ├── main.py             # Aplicação FastAPI com endpoints
-│   ├── otel.py             # Configuração OpenTelemetry
-│   ├── logging_config.py   # Configuração de logging estruturado em JSON
-│   └── middleware.py       # Middleware HTTP para logging automático
+│   ├── config.py            # Configuração centralizada (Pydantic Settings)
+│   ├── otel.py              # Configuração OpenTelemetry
+│   ├── logging_config.py    # Configuração de logging estruturado em JSON
+│   └── middleware.py        # Middleware HTTP para logging automático
+├── .env_example             # Template de variáveis de ambiente
+├── .env                     # Variáveis de ambiente (não commitado)
 ├── otel/
 │   └── otel-collector-config.yml  # Configuração do OTel Collector
 ├── prometheus/
@@ -340,6 +416,7 @@ poc-fastapi-otel/
 ```
 
 **Estrutura Modular:**
+- `src/config.py`: Configuração centralizada de variáveis de ambiente usando Pydantic Settings
 - `src/otel.py`: Configuração OpenTelemetry isolada e reutilizável
 - `src/logging_config.py`: Formatter JSON customizado com suporte a TraceID/SpanID
 - `src/middleware.py`: Middleware para logging automático de requisições HTTP

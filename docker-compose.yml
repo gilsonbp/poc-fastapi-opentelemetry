@@ -5,11 +5,16 @@ services:
       context: .
     ports:
       - "8000:8000"
-    environment:
-      # Envia o nome do serviço para o OpenTelemetry
-      - OTEL_SERVICE_NAME=poc-fastapi-service
-      # Define o endpoint do Collector (via HTTP)
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+    # Carrega variáveis de ambiente do arquivo .env
+    # O Pydantic Settings (src/config.py) usa valores padrão se as variáveis não existirem
+    env_file:
+      - .env
+    # Variáveis de ambiente podem ser definidas aqui para fazer override do .env
+    # Útil para testes ou configurações específicas do ambiente
+    # Exemplo:
+    # environment:
+    #   - OTEL_SERVICE_NAME=meu-servico-customizado
+    #   - LOG_LEVEL=DEBUG
     depends_on:
       - otel-collector
 

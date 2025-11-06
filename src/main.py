@@ -6,11 +6,11 @@ OpenTelemetry definida em otel.py.
 """
 
 import logging
-import os
 import time
 import requests
 from fastapi import FastAPI, HTTPException
 
+from src.config import settings
 from src.otel import setup_telemetry
 from src.middleware import HTTPLoggingMiddleware
 
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 def read_root():
     """Endpoint raiz simples para health check."""
     # Health check - log mínimo (já filtrado pelo middleware)
-    return {"status": "ok", "service": os.environ.get("OTEL_SERVICE_NAME", "unknown")}
+    return {"status": "ok", "service": settings.service_name}
 
 
 @app.get("/simular-financiamento")
