@@ -11,8 +11,8 @@ import time
 import requests
 from fastapi import FastAPI, HTTPException
 
-from src.fastapi.otel import setup_telemetry
-from src.fastapi.middleware import HTTPLoggingMiddleware
+from src.otel import setup_telemetry
+from src.middleware import HTTPLoggingMiddleware
 
 # Criar aplicação FastAPI
 app = FastAPI(

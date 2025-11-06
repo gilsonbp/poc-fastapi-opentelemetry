@@ -20,6 +20,6 @@ COPY ./src /code/src
 # O uvicorn irá rodar a aplicação na porta 8000
 EXPOSE 8000
 
-# Comando para iniciar a aplicação (o módulo agora é 'src.fastapi.main')
+# Comando para iniciar a aplicação (o módulo agora é 'src.main')
 # Usa 'uv run' para executar dentro do ambiente virtual criado pelo uv sync
-CMD ["uv", "run", "uvicorn", "src.fastapi.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]

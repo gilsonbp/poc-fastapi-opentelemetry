@@ -1,2 +1,0 @@
-# Pacote FastAPI
-

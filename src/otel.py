@@ -20,7 +20,7 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
-from src.fastapi.logging_config import setup_logging
+from src.logging_config import setup_logging
 
 
 def setup_telemetry(app: FastAPI) -> None:

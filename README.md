@@ -178,7 +178,7 @@ dependencies = [
 
 **Opção A: Estrutura modular (recomendado)**
 
-Copie os módulos de configuração de `src/fastapi/`:
+Copie os módulos de configuração de `src/`:
 
 1. **`logging_config.py`** - Configura logging estruturado em JSON
 2. **`otel.py`** - Configura OpenTelemetry (traces, métricas)
@@ -313,12 +313,11 @@ Após iniciar a stack, acesse:
 ```
 poc-fastapi-otel/
 ├── src/
-│   └── fastapi/
-│       ├── __init__.py
-│       ├── main.py             # Aplicação FastAPI com endpoints
-│       ├── otel.py             # Configuração OpenTelemetry
-│       ├── logging_config.py   # Configuração de logging estruturado em JSON
-│       └── middleware.py       # Middleware HTTP para logging automático
+│   ├── __init__.py
+│   ├── main.py             # Aplicação FastAPI com endpoints
+│   ├── otel.py             # Configuração OpenTelemetry
+│   ├── logging_config.py   # Configuração de logging estruturado em JSON
+│   └── middleware.py       # Middleware HTTP para logging automático
 ├── otel/
 │   └── otel-collector-config.yml  # Configuração do OTel Collector
 ├── prometheus/
@@ -341,11 +340,10 @@ poc-fastapi-otel/
 ```
 
 **Estrutura Modular:**
-- `src/fastapi/otel.py`: Configuração OpenTelemetry isolada e reutilizável
-- `src/fastapi/logging_config.py`: Formatter JSON customizado com suporte a TraceID/SpanID
-- `src/fastapi/middleware.py`: Middleware para logging automático de requisições HTTP
-- `src/fastapi/main.py`: Aplicação FastAPI focada apenas em endpoints
-- Preparada para adicionar outros frameworks (ex: `src/django/` no futuro)
+- `src/otel.py`: Configuração OpenTelemetry isolada e reutilizável
+- `src/logging_config.py`: Formatter JSON customizado com suporte a TraceID/SpanID
+- `src/middleware.py`: Middleware para logging automático de requisições HTTP
+- `src/main.py`: Aplicação FastAPI focada apenas em endpoints
 
 ---
 
