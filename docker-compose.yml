@@ -1,0 +1,102 @@
+services:
+  # 1. A Aplicação FastAPI que será monitorada
+  app-fastapi:
+    build:
+      context: .
+    ports:
+      - "8000:8000"
+    environment:
+      # Envia o nome do serviço para o OpenTelemetry
+      - OTEL_SERVICE_NAME=poc-fastapi-service
+      # Define o endpoint do Collector (via HTTP)
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+    depends_on:
+      - otel-collector
+
+  # 2. O Coletor OpenTelemetry (O Hub Central)
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    volumes:
+      # Monta o arquivo de configuração que define o pipeline
+      - ./otel/otel-collector-config.yml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+      - "8889:8889" # Porta de métricas para o Prometheus
+    depends_on:
+      - prometheus
+      - tempo
+
+  # 3. Prometheus (Banco de Dados de Métricas)
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      # Monta o arquivo de configuração que define o que o Prometheus deve "raspar" (scrape)
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml
+    ports:
+      - "9090:9090"
+
+  # 4. Loki (Banco de Dados de Logs)
+  loki:
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+
+  # 4.1. Promtail (Coletor de Logs para Loki)
+  promtail:
+    image: grafana/promtail:latest
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./promtail/promtail.yml:/etc/promtail/promtail.yml
+    command: -config.file=/etc/promtail/promtail.yml
+    depends_on:
+      - loki
+
+  # 5. Tempo (Backend de Traces Distribuídos - melhor integração com Grafana)
+  tempo:
+    image: grafana/tempo:latest
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    volumes:
+      - ./tempo/tempo.yml:/etc/tempo/tempo.yml
+      - tempo-data:/var/tempo
+    ports:
+      - "3200:3200" # Tempo UI/API
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+    # Portas 4317 e 4318 são apenas internas (não precisam ser expostas)
+
+  # 6. Alertmanager (Sistema de Alertas)
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+
+  # 7. Grafana (Dashboard e Visualização Unificada - estilo New Relic)
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      # Habilita correlação entre traces, logs e métricas
+      - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+      - alertmanager
+      - promtail
+
+volumes:
+  tempo-data:

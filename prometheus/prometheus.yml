@@ -1,0 +1,34 @@
+# Define quais endpoints o Prometheus deve monitorar
+
+global:
+  scrape_interval: 5s # Intervalo de coleta
+  evaluation_interval: 5s # Intervalo de avaliação de alertas
+  external_labels:
+    cluster: 'local'
+    environment: 'development'
+
+# Configuração do Alertmanager
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - 'alertmanager:9093'
+
+# Regras de alertas
+rule_files:
+  - '/etc/prometheus/alerts.yml'
+
+scrape_configs:
+  # 1. O próprio Prometheus (para monitorar sua própria saúde)
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # 2. O OpenTelemetry Collector
+  # Instruímos o Prometheus a coletar as métricas que o
+  # 'otel-collector' está expondo na porta 8889.
+  - job_name: 'otel-collector'
+    scrape_interval: 5s
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['otel-collector:8889']

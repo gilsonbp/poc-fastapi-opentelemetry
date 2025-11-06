@@ -1,0 +1,16 @@
+[project]
+name = "poc-fastapi-otel"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.121.0",
+    "opentelemetry-distro>=0.59b0",
+    "opentelemetry-sdk>=1.38.0",
+    "opentelemetry-exporter-otlp>=1.38.0",
+    "opentelemetry-instrumentation-fastapi>=0.59b0",
+    "opentelemetry-instrumentation-logging>=0.59b0",
+    "opentelemetry-instrumentation-requests>=0.59b0",
+    "uvicorn[standard]>=0.38.0",
+]

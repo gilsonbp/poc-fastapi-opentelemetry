@@ -1,0 +1,34 @@
+groups:
+  - name: application_alerts
+    interval: 30s
+    rules:
+      # Alerta para alta taxa de erro HTTP
+      - alert: HighErrorRate
+        expr: rate(http_server_duration_milliseconds_count{http_status_code=~"5.."}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Alta taxa de erros HTTP 5xx"
+          description: "Taxa de erros HTTP 5xx acima de 0.1/s no serviço {{ $labels.service_name }}"
+
+      # Alerta para latência alta
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, rate(http_server_duration_milliseconds_bucket[5m])) > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latência alta detectada"
+          description: "P95 de latência acima de 1000ms no serviço {{ $labels.service_name }}"
+
+      # Alerta para serviço indisponível
+      - alert: ServiceDown
+        expr: up{job="otel-collector"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Serviço indisponível"
+          description: "O serviço {{ $labels.job }} está indisponível"
+

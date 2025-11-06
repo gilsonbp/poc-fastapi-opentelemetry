@@ -1,0 +1,56 @@
+# Este arquivo define o pipeline de dados do OpenTelemetry
+
+receivers:
+  # O Collector irá "receber" dados OTLP via gRPC e HTTP
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Processador para agrupar dados em lotes (melhora performance)
+  batch:
+
+exporters:
+  # 1. Exportador para o Prometheus
+  # Expõe um endpoint na porta 8889 que o Prometheus pode "raspar" (scrape)
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    const_labels:
+      label1: value1
+    metric_expiration: 180m
+    enable_open_metrics: true
+
+  # 2. Exportador para o Tempo (armazenamento de traces - melhor integração com Grafana)
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # 4. Exportador de debug (substitui o logging deprecado)
+  # Isso imprime os dados recebidos no console do container do collector
+  debug:
+    verbosity: normal
+
+service:
+  # Define os pipelines (como os dados fluem)
+  pipelines:
+    # Pipeline de Traces
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/tempo, debug] # Envia para Tempo E para o log
+
+    # Pipeline de Métricas
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus, debug] # Envia para Prometheus E para o log
+
+    # Pipeline de Logs
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug] # Por enquanto, apenas debug (Loki será adicionado via Promtail)
