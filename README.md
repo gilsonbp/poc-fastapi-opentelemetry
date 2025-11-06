@@ -22,11 +22,12 @@
 Esta POC demonstra como implementar uma stack completa de observabilidade para aplicações FastAPI, incluindo:
 
 - ✅ **Métricas** (Prometheus)
-- ✅ **Logs** (Loki + Promtail)
+- ✅ **Logs Estruturados em JSON** (Loki + Promtail) com correlação automática via TraceID/SpanID
 - ✅ **Traces Distribuídos** (Tempo)
 - ✅ **Visualização Unificada** (Grafana)
 - ✅ **Alertas** (Alertmanager)
 - ✅ **Correlação** entre métricas, logs e traces
+- ✅ **Middleware HTTP** para logging automático de requisições
 
 A stack é totalmente containerizada com Docker Compose e pronta para uso em desenvolvimento ou como base para produção.
 
@@ -68,13 +69,14 @@ A stack é totalmente containerizada com Docker Compose e pronta para uso em des
 
 ### Fluxo de Dados
 
-1. **Aplicação FastAPI** envia telemetria (traces, métricas, logs) via OTLP para o **OpenTelemetry Collector**
-2. **OTel Collector** processa e roteia os dados:
+1. **Aplicação FastAPI** envia telemetria (traces, métricas) via OTLP para o **OpenTelemetry Collector**
+2. **Aplicação FastAPI** gera logs estruturados em JSON (com TraceID/SpanID injetados automaticamente)
+3. **OTel Collector** processa e roteia os dados:
    - **Traces** → Tempo
    - **Métricas** → Prometheus (via endpoint `/metrics`)
-   - **Logs** → Coletados pelo Promtail (dos containers Docker) → Loki
-3. **Grafana** consome todos os dados para visualização unificada
-4. **Prometheus** avalia regras de alerta e envia para **Alertmanager**
+4. **Promtail** coleta logs dos containers Docker (formato JSON) → **Loki**
+5. **Grafana** consome todos os dados para visualização unificada com correlação automática
+6. **Prometheus** avalia regras de alerta e envia para **Alertmanager**
 
 ---
 
@@ -176,67 +178,18 @@ dependencies = [
 
 **Opção A: Estrutura modular (recomendado)**
 
-Crie um módulo de configuração separado (ex: `otel.py`) baseado em `src/fastapi/otel.py`:
+Copie os módulos de configuração de `src/fastapi/`:
 
-```python
-# otel.py
-"""Configuração do OpenTelemetry"""
-import logging
-import os
-from fastapi import FastAPI
-from opentelemetry import trace, metrics
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.requests import RequestsInstrumentor
-from opentelemetry.instrumentation.logging import LoggingInstrumentor
-
-def setup_telemetry(app: FastAPI) -> None:
-    """Configura OpenTelemetry e instrumenta uma aplicação FastAPI existente."""
-    resource = Resource.create({
-        "service.name": os.environ.get("OTEL_SERVICE_NAME", "seu-servico"),
-    })
-    
-    # Configurar endpoint OTLP (gRPC na porta 4317)
-    otlp_endpoint_env = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4318")
-    if otlp_endpoint_env.startswith("http://"):
-        otlp_endpoint = otlp_endpoint_env.replace("http://", "").replace(":4318", ":4317")
-    elif otlp_endpoint_env.startswith("https://"):
-        otlp_endpoint = otlp_endpoint_env.replace("https://", "").replace(":4318", ":4317")
-    else:
-        otlp_endpoint = otlp_endpoint_env if ":" in otlp_endpoint_env else f"{otlp_endpoint_env}:4317"
-    
-    # Configurar TracerProvider
-    trace_provider = TracerProvider(resource=resource)
-    otlp_trace_exporter = OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
-    trace_provider.add_span_processor(BatchSpanProcessor(otlp_trace_exporter))
-    trace.set_tracer_provider(trace_provider)
-    
-    # Configurar MeterProvider
-    otlp_metric_exporter = OTLPMetricExporter(endpoint=otlp_endpoint, insecure=True)
-    metric_reader = PeriodicExportingMetricReader(otlp_metric_exporter, export_interval_millis=5000)
-    metrics_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
-    metrics.set_meter_provider(metrics_provider)
-    
-    # Instrumentar logging
-    logging.basicConfig(level=logging.INFO)
-    LoggingInstrumentor().instrument(set_logging_format=True)
-    
-    # Instrumentar a aplicação FastAPI
-    FastAPIInstrumentor.instrument_app(app)
-    RequestsInstrumentor().instrument()
-```
+1. **`logging_config.py`** - Configura logging estruturado em JSON
+2. **`otel.py`** - Configura OpenTelemetry (traces, métricas)
+3. **`middleware.py`** - Middleware para logging automático de requisições HTTP
 
 No seu arquivo principal (`main.py`):
 
 ```python
 from fastapi import FastAPI
 from otel import setup_telemetry
+from middleware import HTTPLoggingMiddleware
 
 # Criar aplicação FastAPI
 app = FastAPI(
@@ -245,14 +198,23 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Instrumentar com OpenTelemetry
+# Instrumentar com OpenTelemetry (configura logging JSON + traces + métricas)
 setup_telemetry(app)
+
+# Adicionar middleware de logging HTTP
+app.add_middleware(HTTPLoggingMiddleware)
 
 # Seus endpoints aqui
 @app.get("/")
 def root():
     return {"status": "ok"}
 ```
+
+**Benefícios desta estrutura:**
+- Logs estruturados em JSON com correlação automática via TraceID/SpanID
+- Logging automático de todas requisições HTTP (método, path, status, duração, IP, user agent)
+- Filtragem inteligente de health checks
+- Contexto de negócio pode ser adicionado via `extra` dict nos logs
 
 **Opção B: Configuração inline**
 
@@ -330,7 +292,10 @@ Após iniciar a stack, acesse:
 
 2. **Explorar Logs:**
    - Vá em **Explore** → Selecione **Loki**
-   - Use queries como: `{service="app-fastapi"}`
+   - Use queries como: `{service="app-fastapi"}` ou `{container="poc-fastapi-otel-app-fastapi-1"}`
+   - Filtre por nível: `{container="..."} |= "level":"ERROR"`
+   - Busque por trace_id: `{container="..."} |= "trace_id":"abc123..."`
+   - Os logs são estruturados em JSON, facilitando queries e correlação com traces
 
 3. **Explorar Traces:**
    - Vá em **Explore** → Selecione **Tempo**
@@ -351,7 +316,9 @@ poc-fastapi-otel/
 │   └── fastapi/
 │       ├── __init__.py
 │       ├── main.py             # Aplicação FastAPI com endpoints
-│       └── otel.py             # Configuração OpenTelemetry
+│       ├── otel.py             # Configuração OpenTelemetry
+│       ├── logging_config.py   # Configuração de logging estruturado em JSON
+│       └── middleware.py       # Middleware HTTP para logging automático
 ├── otel/
 │   └── otel-collector-config.yml  # Configuração do OTel Collector
 ├── prometheus/
@@ -375,6 +342,8 @@ poc-fastapi-otel/
 
 **Estrutura Modular:**
 - `src/fastapi/otel.py`: Configuração OpenTelemetry isolada e reutilizável
+- `src/fastapi/logging_config.py`: Formatter JSON customizado com suporte a TraceID/SpanID
+- `src/fastapi/middleware.py`: Middleware para logging automático de requisições HTTP
 - `src/fastapi/main.py`: Aplicação FastAPI focada apenas em endpoints
 - Preparada para adicionar outros frameworks (ex: `src/django/` no futuro)
 
@@ -435,7 +404,15 @@ poc-fastapi-otel/
    ```bash
    docker compose logs promtail
    ```
-3. No Grafana, use a query: `{container="nome-do-container"}`
+3. Verifique se os logs da aplicação estão em formato JSON:
+   ```bash
+   docker compose logs app-fastapi --tail 5
+   ```
+   Você deve ver logs em formato JSON com campos como `trace_id`, `span_id`, `http`, etc.
+4. No Grafana, use queries como:
+   - `{container="poc-fastapi-otel-app-fastapi-1"}`
+   - `{container="..."} |= "level":"ERROR"` (filtrar por nível)
+   - `{container="..."} |= "trace_id":"abc123"` (buscar por trace_id)
 
 ### Problema: Erro "connection refused" ao enviar telemetria
 
@@ -475,10 +452,17 @@ poc-fastapi-otel/
   - Configurar retenção de dados adequada
   - Implementar backup dos dados
   - Configurar notificações reais no Alertmanager (email, Slack, etc.)
+  - Ajustar nível de log via variável `LOG_LEVEL` (DEBUG, INFO, WARNING, ERROR)
 
 - 🔒 **Segurança:** O modo anônimo do Grafana está habilitado apenas para facilitar testes. Desabilite em produção.
 
 - 💾 **Persistência:** Os dados são armazenados em volumes Docker. Use `docker compose down -v` com cuidado (remove todos os dados).
+
+- 📝 **Logs Estruturados:** Os logs são gerados em formato JSON com:
+  - Correlação automática via `trace_id` e `span_id` (injetados pelo OpenTelemetry)
+  - Informações HTTP automáticas (método, path, status, duração, IP, user agent)
+  - Contexto de negócio via `extra` dict
+  - Filtragem automática de health checks (`/`, `/health`, `/docs`, etc.)
 
 ---
 
