@@ -174,12 +174,16 @@ dependencies = [
 
 ### Passo 2: Instrumentar sua Aplicação
 
-Copie o código de instrumentação do arquivo `app/main.py` (linhas 7-76) para o início do seu arquivo principal, **antes** de importar o FastAPI:
+**Opção A: Estrutura modular (recomendado)**
+
+Crie um módulo de configuração separado (ex: `otel.py`) baseado em `src/fastapi/otel.py`:
 
 ```python
-# --- Configuração do OpenTelemetry (Bootstrapping) ---
-# IMPORTANTE: Isso deve rodar ANTES de importar o FastAPI
-
+# otel.py
+"""Configuração do OpenTelemetry"""
+import logging
+import os
+from fastapi import FastAPI
 from opentelemetry import trace, metrics
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
@@ -192,44 +196,67 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
-# Configurar Resource com nome do serviço
-resource = Resource.create({
-    "service.name": os.environ.get("OTEL_SERVICE_NAME", "seu-servico"),
-})
-
-# Configurar endpoint OTLP (gRPC na porta 4317)
-otlp_endpoint_env = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4318")
-if otlp_endpoint_env.startswith("http://"):
-    otlp_endpoint = otlp_endpoint_env.replace("http://", "").replace(":4318", ":4317")
-elif otlp_endpoint_env.startswith("https://"):
-    otlp_endpoint = otlp_endpoint_env.replace("https://", "").replace(":4318", ":4317")
-else:
-    otlp_endpoint = otlp_endpoint_env if ":" in otlp_endpoint_env else f"{otlp_endpoint_env}:4317"
-
-# Configurar TracerProvider (Traces)
-trace_provider = TracerProvider(resource=resource)
-otlp_trace_exporter = OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
-trace_provider.add_span_processor(BatchSpanProcessor(otlp_trace_exporter))
-trace.set_tracer_provider(trace_provider)
-
-# Configurar MeterProvider (Métricas)
-otlp_metric_exporter = OTLPMetricExporter(endpoint=otlp_endpoint, insecure=True)
-metric_reader = PeriodicExportingMetricReader(otlp_metric_exporter, export_interval_millis=5000)
-metrics_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
-metrics.set_meter_provider(metrics_provider)
-
-# Instrumentar logging
-LoggingInstrumentor().instrument(set_logging_format=True)
-
-# Criar app FastAPI
-app = FastAPI()
-
-# Aplicar instrumentações automáticas
-FastAPIInstrumentor.instrument_app(app)
-RequestsInstrumentor().instrument()
-
-# --- Fim da Configuração do OpenTelemetry ---
+def setup_telemetry(app: FastAPI) -> None:
+    """Configura OpenTelemetry e instrumenta uma aplicação FastAPI existente."""
+    resource = Resource.create({
+        "service.name": os.environ.get("OTEL_SERVICE_NAME", "seu-servico"),
+    })
+    
+    # Configurar endpoint OTLP (gRPC na porta 4317)
+    otlp_endpoint_env = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4318")
+    if otlp_endpoint_env.startswith("http://"):
+        otlp_endpoint = otlp_endpoint_env.replace("http://", "").replace(":4318", ":4317")
+    elif otlp_endpoint_env.startswith("https://"):
+        otlp_endpoint = otlp_endpoint_env.replace("https://", "").replace(":4318", ":4317")
+    else:
+        otlp_endpoint = otlp_endpoint_env if ":" in otlp_endpoint_env else f"{otlp_endpoint_env}:4317"
+    
+    # Configurar TracerProvider
+    trace_provider = TracerProvider(resource=resource)
+    otlp_trace_exporter = OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
+    trace_provider.add_span_processor(BatchSpanProcessor(otlp_trace_exporter))
+    trace.set_tracer_provider(trace_provider)
+    
+    # Configurar MeterProvider
+    otlp_metric_exporter = OTLPMetricExporter(endpoint=otlp_endpoint, insecure=True)
+    metric_reader = PeriodicExportingMetricReader(otlp_metric_exporter, export_interval_millis=5000)
+    metrics_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
+    metrics.set_meter_provider(metrics_provider)
+    
+    # Instrumentar logging
+    logging.basicConfig(level=logging.INFO)
+    LoggingInstrumentor().instrument(set_logging_format=True)
+    
+    # Instrumentar a aplicação FastAPI
+    FastAPIInstrumentor.instrument_app(app)
+    RequestsInstrumentor().instrument()
 ```
+
+No seu arquivo principal (`main.py`):
+
+```python
+from fastapi import FastAPI
+from otel import setup_telemetry
+
+# Criar aplicação FastAPI
+app = FastAPI(
+    title="Minha Aplicação",
+    description="Aplicação instrumentada com OpenTelemetry",
+    version="1.0.0"
+)
+
+# Instrumentar com OpenTelemetry
+setup_telemetry(app)
+
+# Seus endpoints aqui
+@app.get("/")
+def root():
+    return {"status": "ok"}
+```
+
+**Opção B: Configuração inline**
+
+Se preferir tudo no mesmo arquivo, configure o OpenTelemetry antes de criar os endpoints, mas após criar a instância do FastAPI.
 
 ### Passo 3: Configurar Variáveis de Ambiente
 
@@ -320,8 +347,11 @@ Após iniciar a stack, acesse:
 
 ```
 poc-fastapi-otel/
-├── app/
-│   └── main.py                 # Aplicação FastAPI instrumentada
+├── src/
+│   └── fastapi/
+│       ├── __init__.py
+│       ├── main.py             # Aplicação FastAPI com endpoints
+│       └── otel.py             # Configuração OpenTelemetry
 ├── otel/
 │   └── otel-collector-config.yml  # Configuração do OTel Collector
 ├── prometheus/
@@ -342,6 +372,11 @@ poc-fastapi-otel/
 ├── pyproject.toml              # Dependências Python
 └── README.md                  # Esta documentação
 ```
+
+**Estrutura Modular:**
+- `src/fastapi/otel.py`: Configuração OpenTelemetry isolada e reutilizável
+- `src/fastapi/main.py`: Aplicação FastAPI focada apenas em endpoints
+- Preparada para adicionar outros frameworks (ex: `src/django/` no futuro)
 
 ---
 

@@ -14,12 +14,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     uv sync --frozen --no-cache
 
-# Copia o código da aplicação (a pasta 'app')
-COPY ./app /code/app
+# Copia o código da aplicação (a pasta 'src')
+COPY ./src /code/src
 
 # O uvicorn irá rodar a aplicação na porta 8000
 EXPOSE 8000
 
-# Comando para iniciar a aplicação (o módulo agora é 'app.main')
+# Comando para iniciar a aplicação (o módulo agora é 'src.fastapi.main')
 # Usa 'uv run' para executar dentro do ambiente virtual criado pelo uv sync
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "uvicorn", "src.fastapi.main:app", "--host", "0.0.0.0", "--port", "8000"]

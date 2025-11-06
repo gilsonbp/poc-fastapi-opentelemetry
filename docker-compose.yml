@@ -64,9 +64,7 @@ services:
       - tempo-data:/var/tempo
     ports:
       - "3200:3200" # Tempo UI/API
-      - "4317:4317" # OTLP gRPC
-      - "4318:4318" # OTLP HTTP
-    # Portas 4317 e 4318 são apenas internas (não precisam ser expostas)
+    # Portas 4317 e 4318 são apenas internas (OTel Collector se conecta via Docker network)
 
   # 6. Alertmanager (Sistema de Alertas)
   alertmanager:
